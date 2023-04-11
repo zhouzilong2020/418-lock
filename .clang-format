@@ -1,0 +1,29 @@
+---
+#
+# You can add options here to match your desired format.
+# For reference, see the following URL:
+#     https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+#
+#
+# To use tabs to indent, change the indent width to 8, and add:
+#     UseTab: ForIndentation
+#
+
+# Use C/C++ as the language
+Language: Cpp
+
+# Inherit our style from LLVM
+BasedOnStyle: Google
+
+ColumnLimit: 80
+IndentWidth: 4
+UseTab: Never
+TabWidth: 4
+AllowShortFunctionsOnASingleLine: InlineOnly
+AlignTrailingComments: true
+IndentCaseLabels: false
+NamespaceIndentation: All
+SpacesInAngles: false
+
+---
+
