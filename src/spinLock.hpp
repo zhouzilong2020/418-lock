@@ -1,18 +1,23 @@
 #ifndef __SPIN_LOCK_HPP__
 #define __SPIN_LOCK_HPP__
 
-#include <mutex>
-
 #include "lock.hpp"
 class SpinLock : public Lock {
    public:
-    virtual void lock(bool isRead) { mu.lock(); };
-    virtual void unlock(bool isRead) { mu.unlock(); };
+    SpinLock() { isLock.store(false); }
+    virtual void lock(bool isRead) {
+        while (1) {
+            while (isLock != false)
+                ;
+            if (isLock.compare_exchange_strong(F, true)) return;
+        }
+    };
+    virtual void unlock(bool isRead) { isLock.store(false); };
     virtual std::string getName() { return name; };
 
    private:
+    bool F = false;
     std::string name = std::string("Spin Lock (test and set)");
-    // std::atomic_bool isLock;
-    std::mutex mu;
+    std::atomic_bool isLock;
 };
 #endif

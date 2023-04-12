@@ -9,8 +9,7 @@
 class TicketLock : public Lock {
    public:
     virtual void lock(bool isRead) {
-        uint myTicket = nowServing.fetch_add(1);
-
+        uint myTicket = nextTicket.fetch_add(1);
         while (nowServing != myTicket)
             ;
     };
@@ -21,8 +20,8 @@ class TicketLock : public Lock {
 
    private:
     std::string name = std::string("Ticket Lock");
-    volatile std::atomic_size_t nowServing = {0};
-    // padding
-    volatile std::atomic_size_t nextTicket = {0};
+    std::atomic_size_t nowServing = {0};
+    char padding[128];  // enough to cover a cache line
+    std::atomic_size_t nextTicket = {0};
 };
 #endif
