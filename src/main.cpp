@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <unistd.h>
 
 #include <chrono>
@@ -8,66 +9,81 @@
 
 using namespace std::chrono;
 
+#include "lock.hpp"
 #include "rwLock.hpp"
+#include "spinLock.hpp"
+#include "ticketLock.hpp"
 
 struct ThreadArgs {
-    int readFraction;
-    int writeFraction;
-    int iteration;
-    RWLock* lock;
-    ThreadArgs(int readFraction, int iteration, RWLock* lock)
+    const uint readFraction;
+    const uint writeFraction;
+    const int iteration;
+    std::vector<Lock*> locks;
+    ThreadArgs(int readFraction, int iteration)
         : readFraction(readFraction),
           writeFraction(100 - readFraction),
-          iteration(iteration),
-          lock(lock) {}
+          iteration(iteration) {}
 };
 
-void* workerThread(void* args) {
+void* worker(void* args) {
     ThreadArgs* threadArgs = (ThreadArgs*)args;
 
-    std::vector<int> latency;
-    int totalWrite = 0, totalRead = 0;
-    latency.reserve(threadArgs->iteration);
-    for (int i = 0; i < threadArgs->iteration; i++) {
-        auto start = high_resolution_clock::now();
+    for (auto lock : threadArgs->locks) {
+        std::vector<int> rLatency, wLatency;
+        int totalWrite = 0, totalRead = 0;
+        rLatency.reserve(threadArgs->iteration);
+        wLatency.reserve(threadArgs->iteration);
 
-        if (arc4random() % 100 < threadArgs->readFraction) {
-            totalRead++;
-            threadArgs->lock->lockR();
-            usleep(100);  // 100 us
-            threadArgs->lock->unlockR();
-        } else {
-            totalWrite++;
-            threadArgs->lock->lockW();
-            usleep(100);  // 100 us
-            threadArgs->lock->unlockW();
+        for (int i = 0; i < threadArgs->iteration; i++) {
+            bool isRead = false;
+            auto start = high_resolution_clock::now();
+
+            if (arc4random() % 100 < threadArgs->readFraction) {
+                totalRead++;
+                lock->lock(true);
+                usleep(1000);  // 1 ms
+                lock->unlock(true);
+                isRead = true;
+            } else {
+                totalWrite++;
+                lock->lock(false);
+                usleep(1000);  // 1 ms
+                lock->unlock(false);
+            }
+
+            auto stop = high_resolution_clock::now();
+            auto duration = duration_cast<microseconds>(stop - start);
+            if (isRead)
+                rLatency.push_back(duration.count() - 1000);
+            else
+                wLatency.push_back(duration.count() - 1000);
         }
 
-        auto stop = high_resolution_clock::now();
-        auto duration = duration_cast<microseconds>(stop - start);
-        latency.push_back(duration.count() - 100);
+        double wTotal = std::accumulate(wLatency.begin(), wLatency.end(), 0);
+        double rTotal = std::accumulate(rLatency.begin(), rLatency.end(), 0);
+        printf("[%s] mean read latency: %.2f, write latency: %.2f\n",
+               lock->getName().c_str(), wTotal / wLatency.size(),
+               rTotal / rLatency.size());
     }
-
-    double total = std::accumulate(latency.begin(), latency.end(), 0);
-    printf("mean latency (R %d, W %d): %.2f\n", totalRead, totalWrite,
-           total / latency.size());
-
     return NULL;
 }
 
-int main(int argc, char* argv[]) {
-    RWLock rwLock;
-    std::mutex spinlock;
-    ThreadArgs args(70, 10000, &rwLock);
+int main() {
+    ThreadArgs args(50, 100);
+    args.locks.push_back(new SpinLock());
+    // args.locks.push_back(new RWLock());
+    // args.locks.push_back(new TicketLock());
+    // args.locks[std::string("Spin Lock")] = &std::mutex();
 
     std::vector<pthread_t> threads;
-    for (int i = 0; i < 8; i++) {
+    uint threadNum = 16;
+    for (uint i = 0; i < threadNum; i++) {
         pthread_t pid;
-        pthread_create(&pid, NULL, workerThread, &args);
+        pthread_create(&pid, NULL, worker, &args);
         threads.push_back(pid);
     }
 
-    for (int i = 0; i < 16; i++) {
+    for (uint i = 0; i < threadNum; i++) {
         pthread_join(threads[i], NULL);
     }
 }

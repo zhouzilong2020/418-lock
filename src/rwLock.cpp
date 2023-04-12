@@ -2,6 +2,22 @@
 
 #include <atomic>
 
+void RWLock::lock(bool isRead) {
+    if (isRead) {
+        lockR();
+        return;
+    }
+    lockW();
+};
+
+void RWLock::unlock(bool isRead) {
+    if (isRead) {
+        unlockR();
+        return;
+    }
+    unlockW();
+};
+
 void RWLock::lockR() {
     std::lock_guard<std::mutex> lk(r);
     readerCnt++;
