@@ -20,8 +20,8 @@ class TicketLock : public Lock {
 
    private:
     std::string name = std::string("Ticket Lock");
-    std::atomic_size_t nowServing = {0};
+    volatile std::atomic_size_t nowServing = {0};
     char padding[128];  // enough to cover a cache line
-    std::atomic_size_t nextTicket = {0};
+    volatile std::atomic_size_t nextTicket = {0};
 };
 #endif

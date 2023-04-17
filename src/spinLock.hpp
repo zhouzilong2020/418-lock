@@ -18,6 +18,6 @@ class SpinLock : public Lock {
    private:
     bool F = false;
     std::string name = std::string("Spin Lock (test and set)");
-    std::atomic_bool isLock;
+    volatile std::atomic_bool isLock;
 };
 #endif
