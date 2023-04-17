@@ -6,8 +6,8 @@
 #include "lock.hpp"
 class NaiveSpinLock : public Lock {
    public:
-    virtual void lock(bool isRead) { mu.lock(); };
-    virtual void unlock(bool isRead) { mu.unlock(); };
+    virtual void lock(const TestContext &ctx) { mu.lock(); };
+    virtual void unlock(const TestContext &ctx) { mu.unlock(); };
     virtual std::string getName() { return name; };
 
    private:

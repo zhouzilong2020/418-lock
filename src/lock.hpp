@@ -1,10 +1,18 @@
 #ifndef __MY__LOCK_HPP__
 #define __MY__LOCK_HPP__
 
+struct TestContext {
+    const bool isRead;  // for RW lock
+    int myEle;          // for array lock
+    TestContext(const bool isRead) : isRead(isRead), myEle(0){};
+};
+
+typedef struct TestContext TestContext;
+
 class Lock {
    public:
-    virtual void lock(bool isRead) = 0;
-    virtual void unlock(bool isRead) = 0;
+    virtual void lock(const TestContext &ctx) = 0;
+    virtual void unlock(const TestContext &ctx) = 0;
     virtual std::string getName() = 0;
 };
 #endif

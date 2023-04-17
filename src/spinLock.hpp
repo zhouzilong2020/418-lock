@@ -5,14 +5,14 @@
 class SpinLock : public Lock {
    public:
     SpinLock() { isLock.store(false); }
-    virtual void lock(bool isRead) {
+    virtual void lock(const TestContext &ctx) {
         while (1) {
             while (isLock != false)
                 ;
             if (isLock.compare_exchange_strong(F, true)) return;
         }
     };
-    virtual void unlock(bool isRead) { isLock.store(false); };
+    virtual void unlock(const TestContext &ctx) { isLock.store(false); };
     virtual std::string getName() { return name; };
 
    private:

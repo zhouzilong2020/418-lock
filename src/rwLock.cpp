@@ -2,16 +2,16 @@
 
 #include <atomic>
 
-void RWLock::lock(bool isRead) {
-    if (isRead) {
+void RWLock::lock(const TestContext &ctx) {
+    if (ctx.isRead) {
         lockR();
         return;
     }
     lockW();
 };
 
-void RWLock::unlock(bool isRead) {
-    if (isRead) {
+void RWLock::unlock(const TestContext &ctx) {
+    if (ctx.isRead) {
         unlockR();
         return;
     }

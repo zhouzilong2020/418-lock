@@ -41,6 +41,7 @@ struct ThreadResult {
 void* worker(void* args) {
     ThreadArgs* threadArgs = (ThreadArgs*)args;
     ThreadResult* res = new ThreadResult();
+    TestContext rCtx(true), wCtx(false);
 
     for (auto& lock : threadArgs->locks) {
         std::vector<int> rLatency, wLatency;
@@ -54,14 +55,14 @@ void* worker(void* args) {
             auto start = high_resolution_clock::now();
             if (isRead) {
                 totalRead++;
-                lock->lock(true);
+                lock->lock(rCtx);
                 usleep(1000);  // 1 ms
-                lock->unlock(true);
+                lock->unlock(rCtx);
             } else {
                 totalWrite++;
-                lock->lock(false);
+                lock->lock(wCtx);
                 usleep(1000);  // 1 ms
-                lock->unlock(false);
+                lock->unlock(wCtx);
             }
 
             auto stop = high_resolution_clock::now();

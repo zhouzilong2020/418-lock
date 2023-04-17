@@ -7,8 +7,8 @@
 class RWLock : public Lock {
    public:
     RWLock() { readerCnt = 0; }
-    virtual void lock(bool isRead);
-    virtual void unlock(bool isRead);
+    virtual void lock(const TestContext &ctx);
+    virtual void unlock(const TestContext &ctx);
     virtual std::string getName() { return name; };
 
    private:

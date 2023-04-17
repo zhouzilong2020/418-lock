@@ -8,13 +8,13 @@
 
 class TicketLock : public Lock {
    public:
-    virtual void lock(bool isRead) {
+    virtual void lock(const TestContext &ctx) {
         uint myTicket = nextTicket.fetch_add(1);
         while (nowServing != myTicket)
             ;
     };
 
-    virtual void unlock(bool isRead) { nowServing++; };
+    virtual void unlock(const TestContext &ctx) { nowServing++; };
 
     virtual std::string getName() { return name; };
 
