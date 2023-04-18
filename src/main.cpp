@@ -73,7 +73,6 @@ void* worker(void* args) {
     for (uint i = 0; i < threadArgs->locks.size(); i++) {
         auto& lock = threadArgs->locks[i];
         std::vector<int> rLatency, wLatency;
-        int totalWrite = 0, totalRead = 0;
         rLatency.reserve(threadArgs->iteration);
         wLatency.reserve(threadArgs->iteration);
 
@@ -83,32 +82,34 @@ void* worker(void* args) {
         pthread_cond_wait(&threadArgs->readyCond, &threadArgs->readyMutex);
         pthread_mutex_unlock(&threadArgs->readyMutex);
 
+        high_resolution_clock::time_point start, stop;
         for (uint j = 0; j < threadArgs->iteration; j++) {
             bool isWrite = threadArgs->testCase[j];
-            auto start = high_resolution_clock::now();
-            if (!isWrite) {
-                totalRead++;
-                lock->lock(rCtx);
-                // some read
-                for (int i = 0; i < 100; i++)
-                    ;
-                lock->unlock(rCtx);
-            } else {
-                totalWrite++;
+            if (isWrite) {
+                start = high_resolution_clock::now();
                 lock->lock(wCtx);
+                stop = high_resolution_clock::now();
+
                 threadArgs->counter[i]++;
-                // some write
+                // some heavy write
                 for (int i = 0; i < 10000; i++)
                     ;
                 lock->unlock(wCtx);
+            } else {
+                start = high_resolution_clock::now();
+                lock->lock(rCtx);
+                stop = high_resolution_clock::now();
+                // some light read
+                for (int i = 0; i < 100; i++)
+                    ;
+                lock->unlock(rCtx);
             }
 
-            auto stop = high_resolution_clock::now();
-            auto duration = duration_cast<microseconds>(stop - start);
-            if (!isWrite)
-                rLatency.push_back(duration.count());
+            auto duration = duration_cast<microseconds>(stop - start).count();
+            if (isWrite)
+                wLatency.push_back(duration);
             else
-                wLatency.push_back(duration.count());
+                rLatency.push_back(duration);
         }
 
         double wTotal = std::accumulate(wLatency.begin(), wLatency.end(), 0);
@@ -126,7 +127,7 @@ void* worker(void* args) {
 }
 
 int main() {
-    const uint threadNum = 8;
+    const uint threadNum = 32;
     ThreadArgs args(threadNum, 0.1, 100000);
     args.addLock(new NaiveSpinLock());
     args.addLock(new TSSpinLock());
