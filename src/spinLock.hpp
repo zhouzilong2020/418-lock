@@ -1,6 +1,8 @@
 #ifndef __SPIN_LOCK_HPP__
 #define __SPIN_LOCK_HPP__
 
+#include <atomic>
+
 #include "lock.hpp"
 class SpinLock : public Lock {
    public:

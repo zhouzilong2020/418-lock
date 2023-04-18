@@ -1,5 +1,6 @@
 #ifndef __MY__LOCK_HPP__
 #define __MY__LOCK_HPP__
+#include <string>
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wunused-private-field"
 
