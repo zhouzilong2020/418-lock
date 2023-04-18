@@ -4,20 +4,22 @@
 #include "lock.hpp"
 class SpinLock : public Lock {
    public:
-    SpinLock() { isLock.store(false); }
+    SpinLock() { isLocked.store(false); }
     virtual void lock(const TestContext &ctx) {
         while (1) {
-            while (isLock != false)
+            while (isLocked.load(std::memory_order_acquire))
                 ;
-            if (isLock.compare_exchange_strong(F, true)) return;
+            if (!isLocked.exchange(true, std::memory_order_acquire)) return;
         }
     };
-    virtual void unlock(const TestContext &ctx) { isLock.store(false); };
+    virtual void unlock(const TestContext &ctx) {
+        isLocked.store(false, std::memory_order_release);
+    };
     virtual std::string getName() { return name; };
 
    private:
-    bool F = false;
-    std::string name = std::string("Spin Lock (test and set)");
-    volatile std::atomic_bool isLock;
+    std::string name = std::string("Spin Lock (test and test and set)");
+    volatile std::atomic_bool isLocked;
 };
+
 #endif
