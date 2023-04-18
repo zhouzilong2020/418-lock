@@ -2,6 +2,7 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include <mutex>
 #include <numeric>
@@ -19,9 +20,11 @@ using namespace std::chrono;
 struct ThreadArgs {
     std::atomic_uint* cnt;
     uint threadCnt;
-    const uint rwRatio;
+    const double wFrac;
     const uint iteration;
     std::vector<Lock*> locks;
+    std::vector<bool> testCase;
+    uint totalWrite;
 
     // counter is used to test the correctness of the lock
     std::vector<uint> counter;
@@ -37,13 +40,21 @@ struct ThreadArgs {
         locks.push_back(lock);
         counter.resize(locks.size());
     }
-    ThreadArgs(uint threadCnt, uint rwRatio, uint iteration)
-        : threadCnt(threadCnt), rwRatio(rwRatio), iteration(iteration) {
+    ThreadArgs(uint threadCnt, double wFrac, uint iteration)
+        : threadCnt(threadCnt), wFrac(wFrac), iteration(iteration) {
         readyCnt = 0;
         finishCnt = 0;
+        totalWrite = 0;
         cnt = new std::atomic_uint(0);
         pthread_cond_init(&readyCond, NULL);
         pthread_mutex_init(&readyMutex, NULL);
+        testCase.resize(iteration, false);
+        for (uint i = 0; i < iteration; i++) {
+            if (rand() % 100 < wFrac * 100) {
+                testCase[i] = true;
+                totalWrite++;
+            }
+        }
     }
 };
 
@@ -71,23 +82,26 @@ void* worker(void* args) {
         pthread_mutex_unlock(&threadArgs->readyMutex);
 
         for (uint j = 0; j < threadArgs->iteration; j++) {
-            bool isRead = !(j % threadArgs->rwRatio);
-
+            bool isWrite = threadArgs->testCase[j];
             auto start = high_resolution_clock::now();
-            if (isRead) {
+            if (!isWrite) {
                 totalRead++;
                 lock->lock(rCtx);
+                for (int i = 0; i < 100; i++)
+                    ;
                 lock->unlock(rCtx);
             } else {
                 totalWrite++;
                 lock->lock(wCtx);
                 threadArgs->counter[i]++;
+                for (int i = 0; i < 10000; i++)
+                    ;
                 lock->unlock(wCtx);
             }
 
             auto stop = high_resolution_clock::now();
             auto duration = duration_cast<microseconds>(stop - start);
-            if (isRead)
+            if (!isWrite)
                 rLatency.push_back(duration.count());
             else
                 wLatency.push_back(duration.count());
@@ -108,8 +122,8 @@ void* worker(void* args) {
 }
 
 int main() {
-    const uint threadNum = 12;
-    ThreadArgs args(threadNum, 10, 10000);
+    const uint threadNum = 16;
+    ThreadArgs args(threadNum, 0.1, 100000);
     args.addLock(new SpinLock());
     args.addLock(new NaiveSpinLock());
     args.addLock(new RWLock());
@@ -127,14 +141,15 @@ int main() {
         // wait until all worker are ready
         while (args.readyCnt != threadNum)
             ;
+        printf("begin testing (%d/%lu) %s\n", i + 1, args.locks.size(),
+               args.locks[i]->getName().c_str());
         args.readyCnt = 0;
         pthread_cond_broadcast(&args.readyCond);
         while (args.finishCnt != threadNum)
             ;
         args.finishCnt = 0;
         // check if the lock is correct
-        uint expected =
-            threadNum * args.iteration * (1 - 1.0 / (double)args.rwRatio);
+        uint expected = threadNum * args.totalWrite;
         if (args.counter[i] != expected) {
             fprintf(stderr, "%s is incorrect! expected %d got %d\n",
                     args.locks[i]->getName().c_str(), expected,
