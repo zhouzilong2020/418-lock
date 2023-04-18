@@ -9,4 +9,7 @@ fairness, latency, cpu usage
 - [x] RW Lock
 - [x] Ticket lock
 - [x] Array based lock
+- [ ] output as file
+- [ ] python script for figure
+- [ ] analysis 
 
