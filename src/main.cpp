@@ -19,18 +19,36 @@ using namespace std::chrono;
 struct ThreadArgs {
     std::atomic_uint* cnt;
     uint threadCnt;
-
     const uint readFraction;
     const uint writeFraction;
     const uint iteration;
     std::vector<Lock*> locks;
+
+    // counter is used to test the correctness of the lock
+    std::vector<uint> counter;
+    // readyCnt and readyCond are used to sync the worker thread.
+    // the master thread will broadcast the readyCond when all the worker are
+    // ready and reset the readyCnt.
+    volatile uint readyCnt;
+    volatile uint finishCnt;
+    pthread_mutex_t readyMutex;
+    pthread_cond_t readyCond;
+
+    void addLock(Lock* lock) {
+        locks.push_back(lock);
+        counter.resize(locks.size());
+    }
     ThreadArgs(uint threadCnt, uint readFraction, uint iteration)
         : threadCnt(threadCnt),
           readFraction(readFraction),
           writeFraction(100 - readFraction),
           iteration(iteration) {
         assert(readFraction <= 100 && readFraction >= 0);
+        readyCnt = 0;
+        finishCnt = 0;
         cnt = new std::atomic_uint(0);
+        pthread_cond_init(&readyCond, NULL);
+        pthread_mutex_init(&readyMutex, NULL);
     }
 };
 
@@ -44,25 +62,35 @@ void* worker(void* args) {
     ThreadResult* res = new ThreadResult();
     TestContext rCtx(true), wCtx(false);
 
-    for (auto& lock : threadArgs->locks) {
+    for (uint i = 0; i < threadArgs->locks.size(); i++) {
+        auto& lock = threadArgs->locks[i];
         std::vector<int> rLatency, wLatency;
         int totalWrite = 0, totalRead = 0;
         rLatency.reserve(threadArgs->iteration);
         wLatency.reserve(threadArgs->iteration);
 
-        for (uint i = 0; i < threadArgs->iteration; i++) {
+        // synchronization
+        pthread_mutex_lock(&threadArgs->readyMutex);
+        threadArgs->readyCnt++;
+        pthread_cond_wait(&threadArgs->readyCond, &threadArgs->readyMutex);
+        pthread_mutex_unlock(&threadArgs->readyMutex);
+        printf("go %s\n", lock->getName().c_str());
+
+        for (uint j = 0; j < threadArgs->iteration; j++) {
             bool isRead = arc4random() % 100 < threadArgs->readFraction;
 
             auto start = high_resolution_clock::now();
             if (isRead) {
                 totalRead++;
                 lock->lock(rCtx);
-                usleep(1000);  // 1 ms
+                threadArgs->counter[i]++;  // test the correctness of the lock
+                usleep(1000);              // 1 ms
                 lock->unlock(rCtx);
             } else {
                 totalWrite++;
                 lock->lock(wCtx);
-                usleep(1000);  // 1 ms
+                threadArgs->counter[i]++;  // test the correctness of the lock
+                usleep(1000);              // 1 ms
                 lock->unlock(wCtx);
             }
 
@@ -79,9 +107,10 @@ void* worker(void* args) {
         res->meanRLatency.push_back(rTotal / rLatency.size());
         res->meanWLatency.push_back(wTotal / wLatency.size());
 
-        (*(threadArgs->cnt))++;
-        while (*threadArgs->cnt % threadArgs->threadCnt != 0)
-            ;
+        // synchronization
+        pthread_mutex_lock(&threadArgs->readyMutex);
+        threadArgs->finishCnt++;
+        pthread_mutex_unlock(&threadArgs->readyMutex);
     }
 
     pthread_exit(res);
@@ -91,17 +120,35 @@ int main() {
     const uint threadNum = 16;
 
     ThreadArgs args(threadNum, 50, 100);
-    args.locks.push_back(new SpinLock());
-    args.locks.push_back(new NaiveSpinLock());
-    args.locks.push_back(new RWLock());
-    args.locks.push_back(new TicketLock());
-    args.locks.push_back(new ArrayLock(threadNum));
+    args.addLock(new SpinLock());
+    args.addLock(new NaiveSpinLock());
+    args.addLock(new RWLock());
+    args.addLock(new TicketLock());
+    args.addLock(new ArrayLock(threadNum));
 
     std::vector<pthread_t> threads;
     for (uint i = 0; i < threadNum; i++) {
         pthread_t pid;
         pthread_create(&pid, NULL, worker, &args);
         threads.push_back(pid);
+    }
+
+    for (uint i = 0; i < args.locks.size(); i++) {
+        // wait until all worker are ready
+        while (args.readyCnt != threadNum)
+            ;
+        args.readyCnt = 0;
+        pthread_cond_broadcast(&args.readyCond);
+        while (args.finishCnt != threadNum)
+            ;
+        args.finishCnt = 0;
+        // check if the lock is correct
+        if (args.counter[i] != threadNum * args.iteration) {
+            fprintf(stderr, "%s is incorrect! expected %d got %d\n",
+                    args.locks[i]->getName().c_str(),
+                    threadNum * args.iteration, args.counter[i]);
+            return 1;
+        }
     }
 
     std::vector<ThreadResult> resList;
