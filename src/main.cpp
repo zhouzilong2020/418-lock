@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <numeric>
@@ -12,8 +13,9 @@
 #include "lock.hpp"
 #include "naiveSpinLock.hpp"
 #include "rwLock.hpp"
-#include "spinLock.hpp"
 #include "ticketLock.hpp"
+#include "tsSpinLock.hpp"
+#include "ttsSpinLock.hpp"
 
 using namespace std::chrono;
 
@@ -87,6 +89,7 @@ void* worker(void* args) {
             if (!isWrite) {
                 totalRead++;
                 lock->lock(rCtx);
+                // some read
                 for (int i = 0; i < 100; i++)
                     ;
                 lock->unlock(rCtx);
@@ -94,6 +97,7 @@ void* worker(void* args) {
                 totalWrite++;
                 lock->lock(wCtx);
                 threadArgs->counter[i]++;
+                // some write
                 for (int i = 0; i < 10000; i++)
                     ;
                 lock->unlock(wCtx);
@@ -122,10 +126,11 @@ void* worker(void* args) {
 }
 
 int main() {
-    const uint threadNum = 16;
+    const uint threadNum = 8;
     ThreadArgs args(threadNum, 0.1, 100000);
-    args.addLock(new SpinLock());
     args.addLock(new NaiveSpinLock());
+    args.addLock(new TSSpinLock());
+    args.addLock(new TTSSpinLock());
     args.addLock(new RWLock());
     args.addLock(new TicketLock());
     args.addLock(new ArrayLock(threadNum));
@@ -137,6 +142,7 @@ int main() {
         threads.push_back(pid);
     }
 
+    std::vector<double> duration(args.locks.size(), 0);
     for (uint i = 0; i < args.locks.size(); i++) {
         // wait until all worker are ready
         while (args.readyCnt != threadNum)
@@ -144,9 +150,13 @@ int main() {
         printf("begin testing (%d/%lu) %s\n", i + 1, args.locks.size(),
                args.locks[i]->getName().c_str());
         args.readyCnt = 0;
+
+        auto start = high_resolution_clock::now();
         pthread_cond_broadcast(&args.readyCond);
-        while (args.finishCnt != threadNum)
-            ;
+        while (args.finishCnt != threadNum) std::this_thread::yield();
+        auto stop = high_resolution_clock::now();
+        duration[i] = duration_cast<milliseconds>(stop - start).count();
+
         args.finishCnt = 0;
         // check if the lock is correct
         uint expected = threadNum * args.totalWrite;
@@ -166,7 +176,6 @@ int main() {
     }
 
     for (uint i = 0; i < args.locks.size(); i++) {
-        std::cout << args.locks[i]->getName() << std::endl;
         double rVar = 0, wVar = 0, rMean = 0, wMean = 0;
 
         for (auto& res : resList) {
@@ -185,9 +194,15 @@ int main() {
         rVar = sqrt(rVar / resList.size());
         wVar = sqrt(wVar / resList.size());
 
-        std::cout << "Read Latency  | mean: " << rMean << " us var: " << rVar
+        std::cout << args.locks[i]->getName() << std::endl;
+        std::cout << std::fixed << std::setprecision(2)
+                  << "Total time elapsed: " << duration[i] << "ms" << std::endl;
+        std::cout << std::fixed << std::setprecision(2)
+                  << "Read Latency  | mean: " << rMean << "us var: " << rVar
                   << std::endl;
-        std::cout << "Write Latency | mean: " << wMean << " us var: " << wVar
+        std::cout << std::fixed << std::setprecision(2)
+                  << "Write Latency | mean: " << wMean << "us var: " << wVar
+                  << std::endl
                   << std::endl;
     }
 }

@@ -11,7 +11,7 @@ class NaiveSpinLock : public Lock {
     virtual std::string getName() { return name; };
 
    private:
-    std::string name = std::string("Naive Spin Lock (mutex)");
+    std::string name = std::string("Baseline (mutex)");
     std::mutex mu;
 };
 #endif

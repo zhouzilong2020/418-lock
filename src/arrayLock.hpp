@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <string>
+#include <thread>
 
 #include "lock.hpp"
 class ArrayLock : public Lock {
@@ -12,8 +13,9 @@ class ArrayLock : public Lock {
     virtual void lock(const TestContext& ctx) {
         auto myEle = head.fetch_add(1, std::memory_order_acquire) % threadCnt;
         setMyEle(const_cast<TestContext*>(&ctx), myEle);
-        while (status[myEle].value.load() == 1)
-            ;
+        while (status[myEle].value.load() == 1) {
+            std::this_thread::yield();
+        }
     }
 
     virtual void unlock(const TestContext& ctx) {

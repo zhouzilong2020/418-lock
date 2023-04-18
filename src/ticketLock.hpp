@@ -11,8 +11,9 @@ class TicketLock : public Lock {
     virtual void lock(const TestContext &ctx) {
         uint myTicket = nextTicket.fetch_add(1, std::memory_order_relaxed);
 
-        while (myTicket != nowServing.load(std::memory_order_acquire))
-            ;
+        while (myTicket != nowServing.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+        }
     };
 
     virtual void unlock(const TestContext &ctx) {
