@@ -1,5 +1,7 @@
 #ifndef __MY__LOCK_HPP__
 #define __MY__LOCK_HPP__
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-private-field"
 
 struct TestContext {
     const bool isRead;  // for RW lock
