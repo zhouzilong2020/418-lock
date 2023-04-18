@@ -19,8 +19,7 @@ using namespace std::chrono;
 struct ThreadArgs {
     std::atomic_uint* cnt;
     uint threadCnt;
-    const uint readFraction;
-    const uint writeFraction;
+    const uint rwRatio;
     const uint iteration;
     std::vector<Lock*> locks;
 
@@ -38,12 +37,8 @@ struct ThreadArgs {
         locks.push_back(lock);
         counter.resize(locks.size());
     }
-    ThreadArgs(uint threadCnt, uint readFraction, uint iteration)
-        : threadCnt(threadCnt),
-          readFraction(readFraction),
-          writeFraction(100 - readFraction),
-          iteration(iteration) {
-        assert(readFraction <= 100 && readFraction >= 0);
+    ThreadArgs(uint threadCnt, uint rwRatio, uint iteration)
+        : threadCnt(threadCnt), rwRatio(rwRatio), iteration(iteration) {
         readyCnt = 0;
         finishCnt = 0;
         cnt = new std::atomic_uint(0);
@@ -74,32 +69,28 @@ void* worker(void* args) {
         threadArgs->readyCnt++;
         pthread_cond_wait(&threadArgs->readyCond, &threadArgs->readyMutex);
         pthread_mutex_unlock(&threadArgs->readyMutex);
-        printf("go %s\n", lock->getName().c_str());
 
         for (uint j = 0; j < threadArgs->iteration; j++) {
-            bool isRead = arc4random() % 100 < threadArgs->readFraction;
+            bool isRead = !(j % threadArgs->rwRatio);
 
             auto start = high_resolution_clock::now();
             if (isRead) {
                 totalRead++;
                 lock->lock(rCtx);
-                threadArgs->counter[i]++;  // test the correctness of the lock
-                usleep(1000);              // 1 ms
                 lock->unlock(rCtx);
             } else {
                 totalWrite++;
                 lock->lock(wCtx);
-                threadArgs->counter[i]++;  // test the correctness of the lock
-                usleep(1000);              // 1 ms
+                threadArgs->counter[i]++;
                 lock->unlock(wCtx);
             }
 
             auto stop = high_resolution_clock::now();
             auto duration = duration_cast<microseconds>(stop - start);
             if (isRead)
-                rLatency.push_back(duration.count() - 1000);
+                rLatency.push_back(duration.count());
             else
-                wLatency.push_back(duration.count() - 1000);
+                wLatency.push_back(duration.count());
         }
 
         double wTotal = std::accumulate(wLatency.begin(), wLatency.end(), 0);
@@ -117,9 +108,8 @@ void* worker(void* args) {
 }
 
 int main() {
-    const uint threadNum = 16;
-
-    ThreadArgs args(threadNum, 50, 100);
+    const uint threadNum = 12;
+    ThreadArgs args(threadNum, 10, 10000);
     args.addLock(new SpinLock());
     args.addLock(new NaiveSpinLock());
     args.addLock(new RWLock());
@@ -143,10 +133,12 @@ int main() {
             ;
         args.finishCnt = 0;
         // check if the lock is correct
-        if (args.counter[i] != threadNum * args.iteration) {
+        uint expected =
+            threadNum * args.iteration * (1 - 1.0 / (double)args.rwRatio);
+        if (args.counter[i] != expected) {
             fprintf(stderr, "%s is incorrect! expected %d got %d\n",
-                    args.locks[i]->getName().c_str(),
-                    threadNum * args.iteration, args.counter[i]);
+                    args.locks[i]->getName().c_str(), expected,
+                    args.counter[i]);
             return 1;
         }
     }
