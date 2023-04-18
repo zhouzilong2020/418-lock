@@ -28,6 +28,9 @@ struct ThreadArgs {
     std::vector<bool> testCase;
     uint totalWrite;
 
+    uint writeTime;  // simulate write, the higher the more expensive the op is
+    uint readTime;   // simulate read, the higher the more expensive the op is
+
     // counter is used to test the correctness of the lock
     std::vector<uint> counter;
     // readyCnt and readyCond are used to sync the worker thread.
@@ -42,8 +45,13 @@ struct ThreadArgs {
         locks.push_back(lock);
         counter.resize(locks.size());
     }
-    ThreadArgs(uint threadCnt, double wFrac, uint iteration)
-        : threadCnt(threadCnt), wFrac(wFrac), iteration(iteration) {
+    ThreadArgs(uint threadCnt, double wFrac, uint iteration,
+               uint writeTime = 1000, uint readTime = 100)
+        : threadCnt(threadCnt),
+          wFrac(wFrac),
+          iteration(iteration),
+          writeTime(writeTime),
+          readTime(readTime) {
         readyCnt = 0;
         finishCnt = 0;
         totalWrite = 0;
@@ -69,6 +77,8 @@ void* worker(void* args) {
     ThreadArgs* threadArgs = (ThreadArgs*)args;
     ThreadResult* res = new ThreadResult();
     TestContext rCtx(true), wCtx(false);
+    uint writeTime = threadArgs->writeTime;
+    uint readTime = threadArgs->readTime;
 
     for (uint i = 0; i < threadArgs->locks.size(); i++) {
         auto& lock = threadArgs->locks[i];
@@ -83,24 +93,29 @@ void* worker(void* args) {
         pthread_mutex_unlock(&threadArgs->readyMutex);
 
         high_resolution_clock::time_point start, stop;
+        uint localCnt = 0, foo = 0;
         for (uint j = 0; j < threadArgs->iteration; j++) {
             bool isWrite = threadArgs->testCase[j];
             if (isWrite) {
                 start = high_resolution_clock::now();
                 lock->lock(wCtx);
                 stop = high_resolution_clock::now();
+                localCnt++;
 
-                threadArgs->counter[i]++;
                 // some heavy write
-                for (int i = 0; i < 10000; i++)
+                for (uint i = 0; i < writeTime; i++)
                     ;
                 lock->unlock(wCtx);
             } else {
                 start = high_resolution_clock::now();
                 lock->lock(rCtx);
                 stop = high_resolution_clock::now();
+                foo++;  // because we increment localCnt in write, this
+                        // guarantees that the only difference between write and
+                        // read is caused by threadParameter
+
                 // some light read
-                for (int i = 0; i < 100; i++)
+                for (uint i = 0; i < readTime; i++)
                     ;
                 lock->unlock(rCtx);
             }
@@ -111,6 +126,10 @@ void* worker(void* args) {
             else
                 rLatency.push_back(duration);
         }
+
+        lock->lock(wCtx);
+        threadArgs->counter[i] += localCnt;
+        lock->unlock(wCtx);
 
         double wTotal = std::accumulate(wLatency.begin(), wLatency.end(), 0);
         double rTotal = std::accumulate(rLatency.begin(), rLatency.end(), 0);
@@ -127,8 +146,8 @@ void* worker(void* args) {
 }
 
 int main() {
-    const uint threadNum = 32;
-    ThreadArgs args(threadNum, 0.1, 100000);
+    const uint threadNum = 16;
+    ThreadArgs args(threadNum, 0.1, 10000, 10000, 10000);
     args.addLock(new NaiveSpinLock());
     args.addLock(new TSSpinLock());
     args.addLock(new TTSSpinLock());
