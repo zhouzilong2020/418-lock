@@ -7,6 +7,7 @@
 #include <numeric>
 #include <vector>
 
+#include "arrayLock.hpp"
 #include "lock.hpp"
 #include "naiveSpinLock.hpp"
 #include "rwLock.hpp"
@@ -94,6 +95,7 @@ int main() {
     args.locks.push_back(new NaiveSpinLock());
     args.locks.push_back(new RWLock());
     args.locks.push_back(new TicketLock());
+    args.locks.push_back(new ArrayLock(threadNum));
 
     std::vector<pthread_t> threads;
     for (uint i = 0; i < threadNum; i++) {
