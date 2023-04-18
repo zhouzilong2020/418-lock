@@ -8,7 +8,7 @@ BUILD_DIR = build
 SRCS = $(wildcard $(SRC_DIR)/*.cpp)
 OBJS = $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(SRCS))
 
-TARGET = lock
+TARGET = lock-test
 
 .PHONY: all clean
 
