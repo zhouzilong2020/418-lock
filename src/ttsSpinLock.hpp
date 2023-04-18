@@ -1,16 +1,18 @@
-#ifndef __SPIN_LOCK_HPP__
-#define __SPIN_LOCK_HPP__
+#ifndef __TTS_SPIN_LOCK_HPP__
+#define __TTS_SPIN_LOCK_HPP__
 
 #include <atomic>
+#include <thread>
 
 #include "lock.hpp"
-class SpinLock : public Lock {
+class TTSSpinLock : public Lock {
    public:
-    SpinLock() { isLocked.store(false); }
+    TTSSpinLock() { isLocked.store(ATOMIC_FLAG_INIT); }
     virtual void lock(const TestContext &ctx) {
         while (1) {
-            while (isLocked.load(std::memory_order_acquire))
-                ;
+            while (isLocked.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
             if (!isLocked.exchange(true, std::memory_order_acquire)) return;
         }
     };
