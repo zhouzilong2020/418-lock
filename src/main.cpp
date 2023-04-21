@@ -3,10 +3,12 @@
 
 #include <chrono>
 #include <cmath>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <numeric>
+#include <sstream>
 #include <vector>
 
 #include "arrayLock.hpp"
@@ -14,6 +16,7 @@
 #include "naiveSpinLock.hpp"
 #include "rwLock.hpp"
 #include "ticketLock.hpp"
+#include "time.hpp"
 #include "tsSpinLock.hpp"
 #include "ttsSpinLock.hpp"
 
@@ -21,9 +24,10 @@ using namespace std::chrono;
 
 struct ThreadArgs {
     std::atomic_uint* cnt;
+
     uint threadCnt;
-    const double wFrac;
-    const uint iteration;
+    double wFrac;
+    uint iteration;
     std::vector<Lock*> locks;
     std::vector<bool> testCase;
     uint totalWrite;
@@ -45,6 +49,11 @@ struct ThreadArgs {
         locks.push_back(lock);
         counter.resize(locks.size());
     }
+    void addLock(const std::vector<Lock*>& _locks) {
+        counter.resize(_locks.size());
+        locks = _locks;
+    }
+    ThreadArgs(){};
     ThreadArgs(uint threadCnt, double wFrac, uint iteration,
                uint writeTime = 1000, uint readTime = 100)
         : threadCnt(threadCnt),
@@ -66,7 +75,29 @@ struct ThreadArgs {
             }
         }
     }
+    ~ThreadArgs() {
+        delete cnt;
+        for (auto& lock : locks) {
+            delete lock;
+        }
+    }
+    friend std::ostream& operator<<(std::ostream& os, const ThreadArgs& ta);
+    std::string hash() {
+        char buf[128];
+        sprintf(buf, "tc_%d-wf_%.1f-wt_%d-rt_%d", threadCnt, wFrac, writeTime,
+                readTime);
+        return buf;
+    }
 };
+
+std::ostream& operator<<(std::ostream& os, const ThreadArgs& ta) {
+    os << "thread number: " << ta.threadCnt << std::endl
+       << "write fraction: " << ta.wFrac << std::endl
+       << "read fraction: " << 1.0 - ta.wFrac << std::endl
+       << "write time: " << ta.writeTime << std::endl
+       << "read time: " << ta.readTime;
+    return os;
+}
 
 struct ThreadResult {
     std::vector<double> meanRLatency;
@@ -145,51 +176,50 @@ void* worker(void* args) {
     pthread_exit(res);
 }
 
-int main() {
-    const uint threadNum = 16;
-    ThreadArgs args(threadNum, 0.1, 10000, 10000, 10000);
-    args.addLock(new NaiveSpinLock());
-    args.addLock(new TSSpinLock());
-    args.addLock(new TTSSpinLock());
-    args.addLock(new RWLock());
-    args.addLock(new TicketLock());
-    args.addLock(new ArrayLock(threadNum));
-
+void run(ThreadArgs& args, const std::string& outputPath) {
     std::vector<pthread_t> threads;
-    for (uint i = 0; i < threadNum; i++) {
+    for (uint i = 0; i < args.threadCnt; i++) {
         pthread_t pid;
-        pthread_create(&pid, NULL, worker, &args);
+        pthread_create(&pid, NULL, worker, (void*)&args);
         threads.push_back(pid);
     }
 
+    std::cout << args << std::endl;
     std::vector<double> duration(args.locks.size(), 0);
     for (uint i = 0; i < args.locks.size(); i++) {
         // wait until all worker are ready
-        while (args.readyCnt != threadNum)
-            ;
+        while (args.readyCnt != args.threadCnt) {
+            std::this_thread::yield();
+        }
+
         printf("begin testing (%d/%lu) %s\n", i + 1, args.locks.size(),
                args.locks[i]->getName().c_str());
         args.readyCnt = 0;
 
         auto start = high_resolution_clock::now();
         pthread_cond_broadcast(&args.readyCond);
-        while (args.finishCnt != threadNum) std::this_thread::yield();
+        while (args.finishCnt != args.threadCnt) std::this_thread::yield();
         auto stop = high_resolution_clock::now();
         duration[i] = duration_cast<milliseconds>(stop - start).count();
 
         args.finishCnt = 0;
         // check if the lock is correct
-        uint expected = threadNum * args.totalWrite;
+        uint expected = args.threadCnt * args.totalWrite;
         if (args.counter[i] != expected) {
             fprintf(stderr, "%s is incorrect! expected %d got %d\n",
                     args.locks[i]->getName().c_str(), expected,
                     args.counter[i]);
-            return 1;
+            exit(EXIT_FAILURE);
         }
     }
 
+    std::ofstream file;
+    file.open(outputPath, std::ios::trunc);
+    std::cout << "dump result to " << outputPath << std::endl;
+    file << getCurrentTime() << std::endl;
+    file << args << std::endl;
     std::vector<ThreadResult> resList;
-    for (uint i = 0; i < threadNum; i++) {
+    for (uint i = 0; i < args.threadCnt; i++) {
         void* resPtr;
         pthread_join(threads[i], &resPtr);
         resList.push_back(*(ThreadResult*)resPtr);
@@ -197,7 +227,6 @@ int main() {
 
     for (uint i = 0; i < args.locks.size(); i++) {
         double rVar = 0, wVar = 0, rMean = 0, wMean = 0;
-
         for (auto& res : resList) {
             rMean += res.meanRLatency[i];
             wMean += res.meanWLatency[i];
@@ -214,15 +243,72 @@ int main() {
         rVar = sqrt(rVar / resList.size());
         wVar = sqrt(wVar / resList.size());
 
-        std::cout << args.locks[i]->getName() << std::endl;
-        std::cout << std::fixed << std::setprecision(2)
-                  << "Total time elapsed: " << duration[i] << "ms" << std::endl;
-        std::cout << std::fixed << std::setprecision(2)
-                  << "Read Latency  | mean: " << rMean << "us var: " << rVar
-                  << std::endl;
-        std::cout << std::fixed << std::setprecision(2)
-                  << "Write Latency | mean: " << wMean << "us var: " << wVar
-                  << std::endl
-                  << std::endl;
+        file << args.locks[i]->getName() << std::endl;
+        file << std::fixed << std::setprecision(2)
+             << "Total time elapsed: " << duration[i] << "ms" << std::endl;
+        file << std::fixed << std::setprecision(2)
+             << "Read Latency  | mean: " << rMean << "us var: " << rVar
+             << std::endl;
+        file << std::fixed << std::setprecision(2)
+             << "Write Latency | mean: " << wMean << "us var: " << wVar
+             << std::endl;
+        file << std::endl;
     }
+    file.close();
+}
+
+int main(int argc, char* argv[]) {
+    uint threadNum = 0;
+    double wFrac = 0.;
+    uint writeTime = 0;
+    uint readTime = 0;
+    char* outputDir = NULL;
+
+    int opt;
+    while ((opt = getopt(argc, argv, "t:w:W:r:o:")) != -1) {
+        switch (opt) {
+        case 't':
+            threadNum = atoi(optarg);
+            break;
+        case 'w':
+            wFrac = atof(optarg);
+            break;
+        case 'W':
+            writeTime = atoi(optarg);
+            break;
+        case 'r':
+            readTime = atoi(optarg);
+            break;
+        case 'o':
+            outputDir = optarg;
+            break;
+        default:
+            std::cerr << "Usage: " << argv[0]
+                      << " -t <number of thread>"
+                         " -w <write fraction 0-1>"
+                         " -W <write time>"
+                         " -r <read time>"
+                         " -o <output dir>\n";
+            return 1;
+        }
+    }
+    if (threadNum == 0 || wFrac == 0.0 || writeTime == 0 || readTime == 0 ||
+        outputDir == NULL) {
+        std::cerr << "Missing required arguments.\n";
+        std::cerr << "Usage: " << argv[0]
+                  << " -t <number of thread>"
+                     " -w <write fraction 0-1>"
+                     " -W <write time>"
+                     " -r <read time>"
+                     " -o <output dir>\n";
+        return 1;
+    }
+
+    ThreadArgs args(threadNum, wFrac, 10000 /* itr */,
+                    writeTime /* write time*/, readTime /* read time */);
+    args.addLock({new NaiveSpinLock(), new TSSpinLock(), new TTSSpinLock(),
+                  new RWLock(), new TicketLock(), new ArrayLock(threadNum)});
+    char outputPath[128];
+    sprintf(outputPath, "%s/%s.log", outputDir, args.hash().c_str());
+    run(args, outputPath);
 }
