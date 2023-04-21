@@ -1,6 +1,41 @@
 
 # Performance Comparison of Different Locks in Multi-core Processors
 
+
+## Roadmap
+Week of March 28
+- Review relevant literature on parallel lock implementations :white_check_mark:
+- Refine project goals and deliverables :white_check_mark:
+    
+Week of April 4
+-  Implement spinning lock and measure performance :white_check_mark:
+-  Implement reader-writer lock and measure performance :white_check_mark:
+    
+Week of April 11
+- Implement ticket lock and measure performance :white_check_mark:
+- Implement array-based lock and measure performance :white_check_mark:
+    
+Week of April 18
+-  Analyze and compare performance results  :white_check_mark:    
+    
+Week of April 25 :one:
+-  refine test drive :white_check_mark:
+- sythesis workload for testing 
+-  automate test process and produce figure
+
+Week of April 25 :two:
+- basic analysis for different lock performance under different workload
+
+Week of May 2 :one:
+- final report and demo scratch
+
+
+Week of May 2 :two:
+-  Finalize poster and demo 
+- Practice presenting poster and demo
+- Submit final project report and any code/documentation updates by May 4
+
+
 ## Summary
 We are aiming to compare the performance of different lock implementations in XV6 in terms of throughput and latency metrics.
 
@@ -28,36 +63,3 @@ The project will measure performance based on two metrics: throughput (i.e., the
 
 ### DEMO
 The demo will show the results of the performance evaluation, including throughput and latency metrics, for each lock implementation. It will demonstrate the effectiveness of the chosen lock implementations in a parallel programming environment
-
-## Roadmap
-Week of March 28
--  Review relevant literature on parallel lock implementations :white_check_mark:
-- Refine project goals and deliverables :white_check_mark:
-    
-Week of April 4
--  Implement spinning lock and measure performance :white_check_mark:
--  Implement reader-writer lock and measure performance :white_check_mark:
-    
-Week of April 11
-- Implement ticket lock and measure performance :white_check_mark:
-- Implement array-based lock and measure performance :white_check_mark:
-    
-Week of April 18
--  Analyze and compare performance results  :white_check_mark:    
--  Prepare poster and demo for intermediate milestone deadline on April 19
-    
-Week of April 25 :one:
--  refine test drive and sythesis workload for testing
--  automate test process and produce figure
-
-Week of April 25 :two:
-- basic analysis for different lock performance under different workload
-
-Week of May 2 :one:
-- final report and demo scratch
-
-
-Week of May 2 :two:
--  Finalize poster and demo 
-- Practice presenting poster and demo
-- Submit final project report and any code/documentation updates by May 4
