@@ -22,6 +22,8 @@ class TicketLock : public Lock {
 
     virtual std::string getName() { return name; };
 
+    virtual ~TicketLock(){};
+
    private:
     std::string name = std::string("Ticket Lock");
     std::atomic_size_t nowServing = {0};

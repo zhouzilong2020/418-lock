@@ -34,6 +34,7 @@ class ArrayLock : public Lock {
         }
         status[0].value.store(0);
     }
+    ~ArrayLock() { delete status; }
 
    private:
     void setMyEle(TestContext* ctx, int head) { ctx->myEle = head; }

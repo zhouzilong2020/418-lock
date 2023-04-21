@@ -17,6 +17,7 @@ class TSSpinLock : public Lock {
         isLocked.clear(std::memory_order_release);
     };
     virtual std::string getName() { return name; };
+    virtual ~TSSpinLock(){};
 
    private:
     std::string name = std::string("Spin Lock (test and set)");

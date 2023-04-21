@@ -20,6 +20,7 @@ class TTSSpinLock : public Lock {
         isLocked.store(false, std::memory_order_release);
     };
     virtual std::string getName() { return name; };
+    virtual ~TTSSpinLock(){};
 
    private:
     std::string name = std::string("Spin Lock (test and test and set)");

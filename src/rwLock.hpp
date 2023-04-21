@@ -7,9 +7,14 @@
 class RWLock : public Lock {
    public:
     RWLock() { readerCnt = 0; }
+
     virtual void lock(const TestContext &ctx);
+
     virtual void unlock(const TestContext &ctx);
+
     virtual std::string getName() { return name; };
+
+    virtual ~RWLock() {}
 
    private:
     std::string name = std::string("RW Lock");
