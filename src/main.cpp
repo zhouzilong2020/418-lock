@@ -9,6 +9,7 @@
 #include <mutex>
 #include <numeric>
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 
 #include "arrayLock.hpp"
@@ -83,7 +84,7 @@ struct ThreadArgs {
     }
     friend std::ostream& operator<<(std::ostream& os, const ThreadArgs& ta);
     std::string hash() {
-        char buf[128];
+        char buf[64];
         sprintf(buf, "tc_%d-wf_%.1f-wt_%d-rt_%d", threadCnt, wFrac, writeTime,
                 readTime);
         return buf;
@@ -99,10 +100,9 @@ std::ostream& operator<<(std::ostream& os, const ThreadArgs& ta) {
     return os;
 }
 
-struct ThreadResult {
-    std::vector<double> meanRLatency;
-    std::vector<double> meanWLatency;
-};
+typedef std::unordered_map<
+    std::string, std::pair<std::vector<int64_t>, std::vector<int64_t>>>
+    ThreadResult;
 
 void* worker(void* args) {
     ThreadArgs* threadArgs = (ThreadArgs*)args;
@@ -113,7 +113,7 @@ void* worker(void* args) {
 
     for (uint i = 0; i < threadArgs->locks.size(); i++) {
         auto& lock = threadArgs->locks[i];
-        std::vector<int> rLatency, wLatency;
+        std::vector<int64_t> rLatency, wLatency;
         rLatency.reserve(threadArgs->iteration);
         wLatency.reserve(threadArgs->iteration);
 
@@ -151,7 +151,7 @@ void* worker(void* args) {
                 lock->unlock(rCtx);
             }
 
-            auto duration = duration_cast<microseconds>(stop - start).count();
+            auto duration = duration_cast<nanoseconds>(stop - start).count();
             if (isWrite)
                 wLatency.push_back(duration);
             else
@@ -162,10 +162,8 @@ void* worker(void* args) {
         threadArgs->counter[i] += localCnt;
         lock->unlock(wCtx);
 
-        double wTotal = std::accumulate(wLatency.begin(), wLatency.end(), 0);
-        double rTotal = std::accumulate(rLatency.begin(), rLatency.end(), 0);
-        res->meanRLatency.push_back(rTotal / rLatency.size());
-        res->meanWLatency.push_back(wTotal / wLatency.size());
+        (*res)[lock->getHash()].first = rLatency;
+        (*res)[lock->getHash()].second = wLatency;
 
         // synchronization
         pthread_mutex_lock(&threadArgs->readyMutex);
@@ -176,7 +174,7 @@ void* worker(void* args) {
     pthread_exit(res);
 }
 
-void run(ThreadArgs& args, const std::string& outputPath) {
+void run(ThreadArgs& args, const std::string& outputDir) {
     std::vector<pthread_t> threads;
     for (uint i = 0; i < args.threadCnt; i++) {
         pthread_t pid;
@@ -185,7 +183,7 @@ void run(ThreadArgs& args, const std::string& outputPath) {
     }
 
     std::cout << args << std::endl;
-    std::vector<double> duration(args.locks.size(), 0);
+    std::vector<int64_t> duration(args.locks.size(), 0);
     for (uint i = 0; i < args.locks.size(); i++) {
         // wait until all worker are ready
         while (args.readyCnt != args.threadCnt) {
@@ -213,11 +211,6 @@ void run(ThreadArgs& args, const std::string& outputPath) {
         }
     }
 
-    std::ofstream file;
-    file.open(outputPath, std::ios::trunc);
-    std::cout << "dump result to " << outputPath << std::endl;
-    file << getCurrentTime() << std::endl;
-    file << args << std::endl;
     std::vector<ThreadResult> resList;
     for (uint i = 0; i < args.threadCnt; i++) {
         void* resPtr;
@@ -225,36 +218,30 @@ void run(ThreadArgs& args, const std::string& outputPath) {
         resList.push_back(*(ThreadResult*)resPtr);
     }
 
-    for (uint i = 0; i < args.locks.size(); i++) {
-        double rVar = 0, wVar = 0, rMean = 0, wMean = 0;
+    // dumping result to local file
+    std::ofstream file;
+    char filePath[64];
+    for (auto& lock : args.locks) {
+        sprintf(filePath, "%s/%s-r-%s", outputDir.c_str(),
+                lock->getHash().c_str(), args.hash().c_str());
+        file.open(filePath, std::ios::trunc);
         for (auto& res : resList) {
-            rMean += res.meanRLatency[i];
-            wMean += res.meanWLatency[i];
+            auto rLatency = res[lock->getHash()].first;
+            for (auto& num : rLatency) file << num << " ";
+            file << std::endl;
         }
-        rMean /= resList.size();
-        wMean /= resList.size();
+        file.close();
 
+        sprintf(filePath, "%s/%s-w-%s", outputDir.c_str(),
+                lock->getHash().c_str(), args.hash().c_str());
+        file.open(filePath, std::ios::trunc);
         for (auto& res : resList) {
-            rVar +=
-                (res.meanRLatency[i] - rMean) * (res.meanRLatency[i] - rMean);
-            wVar +=
-                (res.meanWLatency[i] - wMean) * (res.meanWLatency[i] - wMean);
+            auto wLatency = res[lock->getHash()].second;
+            for (auto& num : wLatency) file << num << " ";
+            file << std::endl;
         }
-        rVar = sqrt(rVar / resList.size());
-        wVar = sqrt(wVar / resList.size());
-
-        file << args.locks[i]->getName() << std::endl;
-        file << std::fixed << std::setprecision(2)
-             << "Total time elapsed: " << duration[i] << "ms" << std::endl;
-        file << std::fixed << std::setprecision(2)
-             << "Read Latency  | mean: " << rMean << "us var: " << rVar
-             << std::endl;
-        file << std::fixed << std::setprecision(2)
-             << "Write Latency | mean: " << wMean << "us var: " << wVar
-             << std::endl;
-        file << std::endl;
+        file.close();
     }
-    file.close();
 }
 
 int main(int argc, char* argv[]) {
@@ -308,7 +295,5 @@ int main(int argc, char* argv[]) {
                     writeTime /* write time*/, readTime /* read time */);
     args.addLock({new NaiveSpinLock(), new TSSpinLock(), new TTSSpinLock(),
                   new RWLock(), new TicketLock(), new ArrayLock(threadNum)});
-    char outputPath[128];
-    sprintf(outputPath, "%s/%s.log", outputDir, args.hash().c_str());
-    run(args, outputPath);
+    run(args, outputDir);
 }

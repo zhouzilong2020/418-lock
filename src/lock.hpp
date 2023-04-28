@@ -16,6 +16,7 @@ class Lock {
     virtual void lock(const TestContext &ctx) = 0;
     virtual void unlock(const TestContext &ctx) = 0;
     virtual std::string getName() = 0;
+    virtual std::string getHash() = 0;
     virtual ~Lock() {}
 };
 #endif

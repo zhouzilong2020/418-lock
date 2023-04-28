@@ -10,7 +10,7 @@
 #include "lock.hpp"
 class ArrayLock : public Lock {
    public:
-    virtual void lock(const TestContext& ctx) {
+    virtual void lock(const TestContext& ctx) override {
         auto myEle = head.fetch_add(1, std::memory_order_acquire) % threadCnt;
         setMyEle(const_cast<TestContext*>(&ctx), myEle);
         while (status[myEle].value.load() == 1) {
@@ -18,13 +18,14 @@ class ArrayLock : public Lock {
         }
     }
 
-    virtual void unlock(const TestContext& ctx) {
+    virtual void unlock(const TestContext& ctx) override {
         status[ctx.myEle].value.store(1, std::memory_order_release);
         status[(ctx.myEle + 1) % threadCnt].value.store(
             0, std::memory_order_release);
     };
 
-    virtual std::string getName() { return name; };
+    virtual std::string getName() override { return name; };
+    virtual std::string getHash() override { return hash; };
 
     ArrayLock(const unsigned int threadCnt) {
         this->threadCnt = threadCnt;
@@ -46,6 +47,7 @@ class ArrayLock : public Lock {
 
     unsigned int threadCnt;
     std::string name = std::string("Array Lock");
+    std::string hash = std::string("AL");
     PaddedInt* status;
     volatile std::atomic_int head;
 };

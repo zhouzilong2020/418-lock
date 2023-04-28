@@ -7,17 +7,16 @@
 class RWLock : public Lock {
    public:
     RWLock() { readerCnt = 0; }
-
-    virtual void lock(const TestContext &ctx);
-
-    virtual void unlock(const TestContext &ctx);
-
-    virtual std::string getName() { return name; };
+    virtual void lock(const TestContext &ctx) override;
+    virtual void unlock(const TestContext &ctx) override;
+    virtual std::string getName() override { return name; };
+    virtual std::string getHash() override { return hash; };
 
     virtual ~RWLock() {}
 
    private:
     std::string name = std::string("RW Lock");
+    std::string hash = std::string("RW");
     void lockR();
     void unlockR();
     void lockW();
