@@ -249,10 +249,11 @@ int main(int argc, char* argv[]) {
     double wFrac = 0.;
     uint writeTime = 0;
     uint readTime = 0;
+    bool onlyRW = false;
     char* outputDir = NULL;
 
     int opt;
-    while ((opt = getopt(argc, argv, "t:w:W:r:o:")) != -1) {
+    while ((opt = getopt(argc, argv, "t:w:W:r:o:n")) != -1) {
         switch (opt) {
         case 't':
             threadNum = atoi(optarg);
@@ -269,10 +270,14 @@ int main(int argc, char* argv[]) {
         case 'o':
             outputDir = optarg;
             break;
+        case 'n':
+            onlyRW = true;
+            break;
         default:
             std::cerr << "Usage: " << argv[0]
                       << " -t <number of thread>"
                          " -w <write fraction 0-1>"
+                         " -o only test on rw lock"
                          " -W <write time>"
                          " -r <read time>"
                          " -o <output dir>\n";
@@ -285,6 +290,7 @@ int main(int argc, char* argv[]) {
         std::cerr << "Usage: " << argv[0]
                   << " -t <number of thread>"
                      " -w <write fraction 0-1>"
+                     " -o only test on rw lock"
                      " -W <write time>"
                      " -r <read time>"
                      " -o <output dir>\n";
@@ -293,7 +299,12 @@ int main(int argc, char* argv[]) {
 
     ThreadArgs args(threadNum, wFrac, 10000 /* itr */,
                     writeTime /* write time*/, readTime /* read time */);
-    args.addLock({new NaiveSpinLock(), new TSSpinLock(), new TTSSpinLock(),
-                  new RWLock(), new TicketLock(), new ArrayLock(threadNum)});
+    if (onlyRW)
+        args.addLock({new RWLock()});
+    else
+        args.addLock({new NaiveSpinLock(), new TSSpinLock(), new TTSSpinLock(),
+                      new RWLock(), new TicketLock(),
+                      new ArrayLock(threadNum)});
+
     run(args, outputDir);
 }
