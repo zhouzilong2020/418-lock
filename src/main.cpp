@@ -32,6 +32,8 @@ struct ThreadArgs {
     std::vector<Lock*> locks;
     std::vector<bool> testCase;
     uint totalWrite;
+    std::atomic_uint curCore;  // set the core affinity for each thread, making
+                               // sure they are running on different core
 
     uint writeTime;  // simulate write, the higher the more expensive the op is
     uint readTime;   // simulate read, the higher the more expensive the op is
@@ -110,6 +112,15 @@ void* worker(void* args) {
     TestContext rCtx(true), wCtx(false);
     uint writeTime = threadArgs->writeTime;
     uint readTime = threadArgs->readTime;
+    // Set the thread affinity
+    uint hart = threadArgs->curCore.fetch_add(1);
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(hart, &cpuset);
+    int rc = pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
+    if (rc != 0) {
+        printf("Error setting thread affinity\n");
+    }
 
     for (uint i = 0; i < threadArgs->locks.size(); i++) {
         auto& lock = threadArgs->locks[i];
@@ -288,8 +299,14 @@ int main(int argc, char* argv[]) {
                      " -o <output dir>\n";
         return 1;
     }
+    if (std::thread::hardware_concurrency() < threadNum) {
+        std::cerr << "This machine only support "
+                  << std::thread::hardware_concurrency() << " got" << threadNum
+                  << std::endl;
+        return 1;
+    }
 
-    ThreadArgs args(threadNum, wFrac, 10000 /* itr */,
+    ThreadArgs args(threadNum, wFrac, 50000 /* itr */,
                     writeTime /* write time*/, readTime /* read time */);
     args.addLock({new NaiveSpinLock(), new TSSpinLock(), new TTSSpinLock(),
                   new RWLock(), new TicketLock(), new ArrayLock(threadNum)});
