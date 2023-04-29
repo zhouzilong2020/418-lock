@@ -228,7 +228,6 @@ void run(ThreadArgs& args, const std::string& outputDir) {
         for (auto& res : resList) {
             auto rLatency = res[lock->getHash()].first;
             for (auto& num : rLatency) file << num << " ";
-            file << std::endl;
         }
         file.close();
 
@@ -238,7 +237,6 @@ void run(ThreadArgs& args, const std::string& outputDir) {
         for (auto& res : resList) {
             auto wLatency = res[lock->getHash()].second;
             for (auto& num : wLatency) file << num << " ";
-            file << std::endl;
         }
         file.close();
     }
@@ -249,7 +247,6 @@ int main(int argc, char* argv[]) {
     double wFrac = 0.;
     uint writeTime = 0;
     uint readTime = 0;
-    bool onlyRW = false;
     char* outputDir = NULL;
 
     int opt;
@@ -270,14 +267,10 @@ int main(int argc, char* argv[]) {
         case 'o':
             outputDir = optarg;
             break;
-        case 'n':
-            onlyRW = true;
-            break;
         default:
             std::cerr << "Usage: " << argv[0]
                       << " -t <number of thread>"
                          " -w <write fraction 0-1>"
-                         " -o only test on rw lock"
                          " -W <write time>"
                          " -r <read time>"
                          " -o <output dir>\n";
@@ -290,7 +283,6 @@ int main(int argc, char* argv[]) {
         std::cerr << "Usage: " << argv[0]
                   << " -t <number of thread>"
                      " -w <write fraction 0-1>"
-                     " -o only test on rw lock"
                      " -W <write time>"
                      " -r <read time>"
                      " -o <output dir>\n";
@@ -299,12 +291,7 @@ int main(int argc, char* argv[]) {
 
     ThreadArgs args(threadNum, wFrac, 10000 /* itr */,
                     writeTime /* write time*/, readTime /* read time */);
-    if (onlyRW)
-        args.addLock({new RWLock()});
-    else
-        args.addLock({new NaiveSpinLock(), new TSSpinLock(), new TTSSpinLock(),
-                      new RWLock(), new TicketLock(),
-                      new ArrayLock(threadNum)});
-
+    args.addLock({new NaiveSpinLock(), new TSSpinLock(), new TTSSpinLock(),
+                  new RWLock(), new TicketLock(), new ArrayLock(threadNum)});
     run(args, outputDir);
 }

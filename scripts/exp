@@ -1,30 +1,100 @@
 #!/usr/bin/python3
 import argparse
 import itertools
+import matplotlib.pyplot as plt
 import os
 import numpy as np
+from matplotlib.ticker import FuncFormatter
+import collections
 
 # Generate all combinations of parameter values using itertools.product
 output_dir = "result"
-num_threads_range = [1, 2, 4, 8, 16]
-write_fraction_range = [0.1, 0.25, 0.5, 0.75, 0.99]
-write_time_range = [1000, 10000, 100000]
+num_threads_range = [1, 2, 4, 8]
+write_fraction_range = [0, 0.2, 0.4, 0.6, 0.8, 1]
 read_time_range = [1000, 10000, 100000]
+write_time_range = [1000, 10000, 100000]
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
-param_combinations = list(itertools.product(num_threads_range, write_fraction_range, write_time_range, read_time_range))
-
+param_combinations = list(itertools.product(
+    num_threads_range, write_fraction_range, write_time_range, read_time_range))
 
 # run experiment
-# for num_threads, write_fraction, write_time, read_time in param_combinations:    
-#     cmd = f'./lock-test -t {num_threads} -w {write_fraction} -W {write_time} -r {read_time} -o {output_dir} > /dev/null &2>1'
-#     os.system(cmd)
+for num_threads, write_fraction, write_time, read_time in param_combinations:
+    if read_time > write_time:
+        continue
+    cmd = f'./lock-test -t {num_threads} -w {write_fraction} -W {write_time} -r {read_time} -o {output_dir}'
+    os.system(cmd)
 
+# lock type
+lock_types = {
+    "TTS": "Test And Test And Set",
+    "TL": "Ticket Lock",
+    "RW": "Reader Writer Lock",
+    "M": "Mutex",
+    "AL": "Array Lock",
+    "TS": "Test And Set",
+}
 
-def parse_filename(filename: str):
-    
+op_types = {
+    "w": "write",
+    "r": "read",
+}
 
-# figure
 files = os.listdir(output_dir)
+results = collections.defaultdict(lambda: {
+    "TTS": {
+        "w": None,
+        "r": None,
+    }, "TL": {
+        "w": None,
+        "r": None,
+    }, "RW": {
+        "w": None,
+        "r": None,
+    }, "M": {
+        "w": None,
+        "r": None,
+    }, "AL": {
+        "w": None,
+        "r": None,
+    }, "TS": {
+        "w": None,
+        "r": None,
+    }
+})
+
+global_min = np.finfo(np.float64).max
+global_max = np.finfo(np.float64).min
 for file in files:
-    print(file)
+    data = np.loadtxt(f'{output_dir}/{file}')
+    split = file.split("-")
+    lock_type = split[0]
+    op_type = split[1]
+    config_hash = "-".join(split[2:])
+    results[config_hash][lock_type][op_type] = data
+
+fig_x = 2
+fig_y = 3
+fig_output_dir = "fig"
+if not os.path.exists(fig_output_dir):
+    os.makedirs(fig_output_dir)
+for config_hash, lock_results in results.items():
+    fig, axs = plt.subplots(fig_x, fig_y, figsize=(10, 7))
+    fig.suptitle(f'Normalized Lock Performance CDF\n({config_hash})')
+    for i, (lock_type, op_results) in enumerate(lock_results.items()):
+        lock_type = lock_types[lock_type]
+        _axs = axs[i // fig_y, i % fig_y]
+        _axs.yaxis.set_major_formatter(
+            FuncFormatter(lambda x, y: f'{x:.2}'))
+        _axs.set_title(f"{lock_type}")
+        for op_type, data in op_results.items():
+            op_type = op_types[op_type]
+            # normalized
+            data = (data - np.mean(data)) / np.std(data)
+            # plot CDF
+            counts, bin_edges = np.histogram(data, bins=1000)
+            cdf = np.cumsum(counts) / np.sum(counts)
+            _axs.plot(bin_edges[1:], cdf, drawstyle='steps', label=op_type)
+        _axs.legend()
+
+    fig.savefig(f'{fig_output_dir}/{config_hash}.png', dpi=300)
