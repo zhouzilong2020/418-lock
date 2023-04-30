@@ -81,13 +81,87 @@ def cdf(fig_output_dir: str):
                 # normalized
                 data = (data - np.mean(data)) / np.std(data)
                 # plot CDF
-                counts, bin_edges = np.histogram(data, bins=1000)
+                counts, bin_edges = np.histogram(data, bins=1000, density=True)
                 cdf = np.cumsum(counts) / np.sum(counts)
                 _axs.plot(
                     bin_edges[1:], cdf, linestyle=line_style[op_type], drawstyle='steps', label=op_type)
             _axs.legend()
         fig.savefig(f'{fig_output_dir}/{config_hash}.png', dpi=300)
         plt.close(fig)
+
+
+def pdf(fig_output_dir: str):
+    if not os.path.exists(fig_output_dir):
+        os.makedirs(fig_output_dir)
+
+    # group the result by lock type
+    lock_results = dict()
+    for config_hash, value in results.items():
+        thread_cnt = config_hash.split("-")[0].split("_")[1]
+        config_hash = "-".join(config_hash.split("-")[1:])
+        for lock_type, op_results in value.items():
+            lock_type = lock_types[lock_type]
+            if lock_type not in lock_results:
+                lock_results[lock_type] = dict()
+            if config_hash not in lock_results[lock_type]:
+                lock_results[lock_type][config_hash] = dict()
+            if thread_cnt not in lock_results[lock_type][config_hash]:
+                lock_results[lock_type][config_hash][thread_cnt] = None
+            lock_results[lock_type][config_hash][thread_cnt] = op_results
+
+    fig_x = 4
+    fig_y = 6
+    for lock_type, config_results in lock_results.items():
+        read_fig, read_axs = plt.subplots(fig_x, fig_y, figsize=(20, 14),
+                                          sharex=True, sharey=True)
+        read_fig.suptitle(f'Read Performance PDF\n{lock_type}')
+
+        write_fig, write_axs = plt.subplots(fig_x, fig_y, figsize=(20, 14),
+                                            sharex=True, sharey=True)
+        write_fig.suptitle(f'Write Performance PDF\n{lock_type}')
+
+        total_fig, total_axs = plt.subplots(fig_x, fig_y, figsize=(20, 14),
+                                            sharex=True, sharey=True)
+        total_fig.suptitle(f'Read and Write Performance PDF\n{lock_type}')
+
+        for i, (config_hash) in enumerate(sorted(config_results)):
+            thread_results = config_results[config_hash]
+            r_axs = read_axs[i // fig_y, i % fig_y]
+            r_axs.set_yscale("log")
+            r_axs.set_xscale("log")
+            r_axs.set_title(f"{config_hash}")
+
+            w_axs = write_axs[i // fig_y, i % fig_y]
+            w_axs.set_yscale("log")
+            w_axs.set_xscale("log")
+            w_axs.set_title(f"{config_hash}")
+
+            t_axs = total_axs[i // fig_y, i % fig_y]
+            t_axs.set_yscale("log")
+            t_axs.set_xscale("log")
+            t_axs.set_title(f"{config_hash}")
+
+            for thread_cnt in sorted(thread_results):
+                op_results = thread_results[thread_cnt]
+                r_axs.hist(op_results["r"], bins=50, alpha=0.5, density=True,
+                           label=f"{thread_cnt} threads")
+                r_axs.legend()
+
+                w_axs.hist(op_results["w"], bins=50, alpha=0.5, density=True,
+                           label=f"{thread_cnt} threads")
+                w_axs.legend()
+
+                t_axs.hist(np.concatenate((op_results["r"], op_results["w"])),
+                           bins=50, alpha=0.5, density=True, label=f"{thread_cnt} threads")
+                t_axs.legend()
+
+        read_fig.savefig(
+            f'{fig_output_dir}/{lock_type}_read.png', dpi=300)
+        write_fig.savefig(
+            f'{fig_output_dir}/{lock_type}_write.png', dpi=300)
+        total_fig.savefig(
+            f'{fig_output_dir}/{lock_type}_total.png', dpi=300)
+        plt.close(read_fig)
 
 
 def bar(fig_output_dir: str):
@@ -186,6 +260,7 @@ def scale(fig_output_dir: str):
         plt.close(fig)
 
 
-# cdf("fig/cdf")
-# bar("fig/bar")
+cdf("fig/cdf")
+pdf("fig/pdf")
+bar("fig/bar")
 scale("fig/scale")
