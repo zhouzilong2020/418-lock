@@ -1,0 +1,191 @@
+#!/usr/bin/python3
+import matplotlib.pyplot as plt
+import os
+import numpy as np
+from matplotlib.ticker import FuncFormatter
+import collections
+
+result_dir = "result"
+# lock type
+lock_types = {
+    "TTS": "Test And Test And Set",
+    "TL": "Ticket Lock",
+    "RW": "Reader Writer Lock",
+    "M": "Mutex",
+    "AL": "Array Lock",
+    "TS": "Test And Set",
+}
+
+op_types = {
+    "w": "write",
+    "r": "read",
+}
+
+results = collections.defaultdict(lambda: {
+    "TTS": {
+        "w": None,
+        "r": None,
+    }, "TL": {
+        "w": None,
+        "r": None,
+    }, "RW": {
+        "w": None,
+        "r": None,
+    }, "M": {
+        "w": None,
+        "r": None,
+    }, "AL": {
+        "w": None,
+        "r": None,
+    }, "TS": {
+        "w": None,
+        "r": None,
+    }
+})
+
+line_style = {"write": "-", "read": "--"}
+
+global_min = np.finfo(np.float64).max
+global_max = np.finfo(np.float64).min
+files = os.listdir(result_dir)
+for file in files:
+    split = file.split("-")
+    lock_type = split[0]
+    op_type = split[1]
+    config_hash = "-".join(split[2:])
+    data = np.loadtxt(f'{result_dir}/{file}')
+    if len(data) == 0:
+        os.system(f'rm {result_dir}/{file}')
+        continue
+    results[config_hash][lock_type][op_type] = data
+
+
+def cdf(fig_output_dir: str):
+    fig_x = 2
+    fig_y = 3
+    if not os.path.exists(fig_output_dir):
+        os.makedirs(fig_output_dir)
+    for config_hash, lock_results in results.items():
+        fig, axs = plt.subplots(fig_x, fig_y, figsize=(10, 7))
+        fig.suptitle(f'Normalized Lock Performance CDF\n({config_hash})')
+        for i, (lock_type, op_results) in enumerate(lock_results.items()):
+            lock_type = lock_types[lock_type]
+            _axs = axs[i // fig_y, i % fig_y]
+            _axs.yaxis.set_major_formatter(
+                FuncFormatter(lambda x, y: f'{x:.2}'))
+            _axs.set_title(f"{lock_type}")
+            for op_type, data in op_results.items():
+                if data is None:
+                    continue
+                op_type = op_types[op_type]
+                # normalized
+                data = (data - np.mean(data)) / np.std(data)
+                # plot CDF
+                counts, bin_edges = np.histogram(data, bins=1000)
+                cdf = np.cumsum(counts) / np.sum(counts)
+                _axs.plot(
+                    bin_edges[1:], cdf, linestyle=line_style[op_type], drawstyle='steps', label=op_type)
+            _axs.legend()
+        fig.savefig(f'{fig_output_dir}/{config_hash}.png', dpi=300)
+        plt.close(fig)
+
+
+def bar(fig_output_dir: str):
+    if not os.path.exists(fig_output_dir):
+        os.makedirs(fig_output_dir)
+    for config_hash, lock_results in results.items():
+        fig, axs = plt.subplots(1, 2, figsize=(10, 7))
+        w_mean = [np.mean(lock_results[key]["w"]) for key in lock_results]
+        w_std = [np.std(lock_results[key]["w"]) for key in lock_results]
+
+        r_mean = [np.mean(lock_results[key]["r"]) for key in lock_results]
+        r_std = [np.std(lock_results[key]["r"]) for key in lock_results]
+
+        # Set the position of the bars on the x-axis
+        bar_width = 0.35
+        write_x = np.arange(len(w_mean))
+        read_x = [x + bar_width for x in write_x]
+
+        axs[0].bar(write_x, w_mean, width=bar_width,
+                   edgecolor='white', label='write')
+        axs[0].bar(read_x, r_mean, width=bar_width,
+                   edgecolor='white', label='read')
+        axs[0].set_title(f"Mean Lock Acquisition Time\n({config_hash})")
+        axs[1].bar(write_x, w_std, width=bar_width,
+                   edgecolor='white', label='write')
+        axs[1].bar(read_x, r_std, width=bar_width,
+                   edgecolor='white', label='read')
+        axs[1].set_title(
+            f"Standard Deviation of Lock Acquisition Time\n({config_hash})")
+
+        axs[0].legend()
+        axs[0].set_xlabel('Lock Type')
+        axs[0].set_yscale('log', base=10, subs=(1.0,))
+        axs[0].set_xticks([r + bar_width/2 for r in range(len(w_mean))],
+                          lock_results.keys())
+        axs[1].legend()
+        axs[1].set_xlabel('Lock Type')
+        axs[1].set_yscale('log', base=10, subs=(1.0,))
+        axs[1].set_xticks([r + bar_width/2 for r in range(len(w_mean))],
+                          lock_results.keys())
+        axs[0].set_ylabel('Nanosecond')
+        fig.savefig(f'{fig_output_dir}/{config_hash}.png', dpi=300)
+        plt.close(fig)
+
+
+def scale(fig_output_dir: str):
+    if not os.path.exists(fig_output_dir):
+        os.makedirs(fig_output_dir)
+    thread_results = dict()
+    for config_hash, lock_results in results.items():
+        thread_cnt = config_hash.split("-")[0].split("_")[1]
+        config_hash = "-".join(config_hash.split("-")[1:])
+        if config_hash not in thread_results:
+            thread_results[config_hash] = dict()
+        thread_results[config_hash][thread_cnt] = lock_results
+
+    graph_y = dict()
+    for config_hash, value in thread_results.items():
+        graph_y[config_hash] = {}
+        for thread_cnt in sorted(value):
+            lock_results = value[thread_cnt]
+            for lock_type, op_results in lock_results.items():
+                if lock_type not in graph_y[config_hash]:
+                    graph_y[config_hash][lock_type] = dict({"w": [], "r": []})
+                for op_type, data in op_results.items():
+                    if data is None:
+                        continue
+                    graph_y[config_hash][lock_type][op_type].append(
+                        np.mean(data))
+
+    fig_x = 2
+    fig_y = 3
+    if not os.path.exists(fig_output_dir):
+        os.makedirs(fig_output_dir)
+    for config_hash, lock_results in graph_y.items():
+        fig, axs = plt.subplots(fig_x, fig_y, figsize=(
+            10, 7), sharex=True, sharey=True)
+        fig.suptitle(f'Lock Performance at Different Scale\n({config_hash})')
+        for i, (lock_type, op_results) in enumerate(lock_results.items()):
+            lock_type = lock_types[lock_type]
+            _axs = axs[i // fig_y, i % fig_y]
+            _axs.yaxis.set_major_formatter(
+                FuncFormatter(lambda x, y: f'{x:.2}'))
+            _axs.set_title(f"{lock_type}")
+            for op_type, data in op_results.items():
+                op_type = op_types[op_type]
+                if data is None:
+                    continue
+                _axs.plot([1, 2, 4, 8], data,
+                          linestyle=line_style[op_type], label=op_type)
+            _axs.set_yscale('log', base=10, subs=(1.0,))
+            _axs.legend(loc='lower right')
+        fig.text(0.5, 0.04, 'Thread Count', ha='center')
+        fig.text(0.04, 0.5, 'Nanosecond', va='center', rotation='vertical')
+        fig.savefig(f'{fig_output_dir}/{config_hash}.png', dpi=300)
+        plt.close(fig)
+
+
+# cdf("fig/cdf")
+# bar("fig/bar")
+scale("fig/scale")

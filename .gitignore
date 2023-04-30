@@ -1,5 +1,6 @@
 lock-test
-
 /build
-
 result
+/fig
+.vscode
+.DS_Store
