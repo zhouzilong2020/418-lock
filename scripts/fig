@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import matplotlib.pyplot as plt
 import os
+import argparse
 import numpy as np
 from matplotlib.ticker import FuncFormatter
 import collections
@@ -260,7 +261,19 @@ def scale(fig_output_dir: str):
         plt.close(fig)
 
 
-cdf("fig/cdf")
-pdf("fig/pdf")
-bar("fig/bar")
-scale("fig/scale")
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "fig", help="the figure to generate, can be one of: pdf, cdf, bar, scale")
+args = parser.parse_args()
+figs = args.fig.split()
+for fig in figs:
+    if fig == "pdf":
+        pdf("fig/pdf")
+    elif fig == "cdf":
+        cdf("fig/cdf")
+    elif fig == "scale":
+        scale("fig/scale")
+    elif fig == "bar":
+        bar("fig/bar")
+    else:
+        print(f"Unknown figure type: {fig}")
