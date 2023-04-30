@@ -13,7 +13,10 @@ chmod +x scripts/fig
 
 scripts/exp # run the experiment, the result will be saved at ./result
 
-scripts/fig # draw figures, will be saved at ./fig
+scripts/fig pdf # draw probability density function, will be saved at ./fig/pdf
+scripts/fig cdf # draw cumulative density function, will be saved at ./fig/cdf
+scripts/fig scale # draw scaling curve, will be saved at ./fig/scale
+scripts/fig bar # draw bar chart of the lock acquisition time, will be saved at ./fig/bar
 ```
 
 ## Roadmap
