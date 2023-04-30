@@ -1,6 +1,20 @@
 
 # Performance Comparison of Different Locks in Multi-core Processors
 
+## How to run?
+```bash
+git clone git@github.com:zhouzilong2020/418-lock.git
+
+cd /the/path/to/the/project
+
+chmod +x scripts/exp
+
+chmod +x scripts/fig
+
+scripts/exp # run the experiment, the result will be saved at ./result
+
+scripts/fig # draw figures, will be saved at ./fig
+```
 
 ## Roadmap
 Week of March 28
@@ -20,15 +34,14 @@ Week of April 18
     
 Week of April 25 :one:
 -  refine test drive :white_check_mark:
-- sythesis workload for testing 
--  automate test process and produce figure
+-  sythesis workload for testing :white_check_mark:
+-  automate test process and produce figure :white_check_mark:
 
 Week of April 25 :two:
 - basic analysis for different lock performance under different workload
 
 Week of May 2 :one:
 - final report and demo scratch
-
 
 Week of May 2 :two:
 -  Finalize poster and demo 
