@@ -306,7 +306,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    ThreadArgs args(threadNum, wFrac, 50000 /* itr */,
+    uint total_iteration = std::thread::hardware_concurrency()  * 20000;
+    ThreadArgs args(threadNum, wFrac, total_iteration/threadNum /* itr */,
                     writeTime /* write time*/, readTime /* read time */);
     args.addLock({new NaiveSpinLock(), new TSSpinLock(), new TTSSpinLock(),
                   new RWLock(), new TicketLock(), new ArrayLock(threadNum)});
