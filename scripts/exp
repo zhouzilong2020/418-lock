@@ -13,9 +13,23 @@ if not os.path.exists(output_dir):
 param_combinations = list(itertools.product(
     num_threads_range, write_fraction_range, write_time_range, read_time_range))
 
+
+def param_hash(param):
+    return f"tc_{param[0]}_wf_{param[1]}_wt_{param[2]}_rt_{param[3]}"
+
+
+completed_exp = set()
+for file in os.listdir(output_dir):
+    # FIXME: this is a hacky way to check if the experiment is completed
+    # the exe will dump all the result at once, however, the server may shut down when the result is partial dumped.
+    completed_exp.add("-".join(file.split("-")[2:]))
+
 # run experiment
 for num_threads, write_fraction, write_time, read_time in param_combinations:
     if read_time > write_time:
+        continue
+    if param_hash((num_threads, write_fraction, write_time, read_time)) in completed_exp:
+        print(f"skip {num_threads} {write_fraction} {write_time} {read_time}")
         continue
     cmd = f'./lock-test -t {num_threads} -w {write_fraction} -W {write_time} -r {read_time} -o {output_dir}'
     os.system(cmd)
